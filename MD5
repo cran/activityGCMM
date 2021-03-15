@@ -1,0 +1,15 @@
+66af485317501c79adcaa31f7f0ae035 *DESCRIPTION
+0069334ee7d144bc8a2ddc78e487d74a *NAMESPACE
+ee1cd922e8d0f870952cbae63c6764bc *R/GCMM.R
+1e23f1a7c1962b2e696baeb6c8e8174a *R/data.R
+bb406ab01a9a33e3e555dab714f5b1e8 *R/globals.R
+1b30505cc7f50f267b2e05051f9ec72e *R/variables.R
+432d4fd74b5030b2d1f811e5ccbb86f3 *data/humanssample.rda
+2c5ba7bad69b89dd775c4a47f29f80f0 *data/redfoxsample.rda
+ecf5ac8c1b11de15863102a680fcb806 *man/GCMM.Rd
+e46b83e4eb2a37adbaccd39b60261423 *man/Variables.Rd
+92570be7956797c94cfb6fe402a8c337 *man/componentsplot.Rd
+53d5159c7b6b675df573f791fda84ff3 *man/exampleGCMM.Rd
+74c847f91bb779e879d841f2c43b6373 *man/humanssample.Rd
+ad49ab0bd46f2d9f056de2f5a56e976a *man/redfoxsample.Rd
+4f55532478a440ea5b24c8fcaca746f4 *man/updateGCMM.Rd
