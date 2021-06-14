@@ -17,7 +17,7 @@ SamplingPeriod Variable identifying sampling period during which camera traps we
 redfoxsample
 }
 \description{
-Example dataset for fitting circular mixed effect mixture models with AnimalAPD package
+Example dataset for fitting circular mixed effect mixture models with activityGCMM package
 }
 \details{
 Sample data of camera trap observations of humans

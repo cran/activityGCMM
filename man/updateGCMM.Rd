@@ -4,7 +4,18 @@
 \alias{updateGCMM}
 \title{Extend GCMM analysis}
 \usage{
-updateGCMM(model, burnin = 0, sample = 10000)
+updateGCMM(
+  model,
+  burnin = 0,
+  sample = 10000,
+  saveclustIDs = FALSE,
+  saveREs = FALSE,
+  saveResids = FALSE,
+  autorun = TRUE,
+  minESS = 5000,
+  maxrep = 5,
+  drop.chain = 0
+)
 }
 \arguments{
 \item{model}{Object of class \code{GCMM} that is produced by the \code{\link{GCMM}} function}
@@ -12,6 +23,20 @@ updateGCMM(model, burnin = 0, sample = 10000)
 \item{burnin}{Number of iterations per MCMC chain to be discarded as a burn-in}
 
 \item{sample}{Number of iterations per MCMC chain}
+
+\item{saveclustIDs}{Whether to save component cluster identification for the data points; default=FALSE}
+
+\item{saveREs}{Whether random intercepts are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations; default=FALSE}
+
+\item{saveResids}{Whether model residuals are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations}
+
+\item{autorun}{Whether to automatically extend the analysis until MCMC chain convergence and minimum effective sample size (ESS) is achieved; default is TRUE}
+
+\item{minESS}{Desired minimum effective sample size (MCMC) when automatically extending the analysis using \code{autorun=TRUE}; default is 5000}
+
+\item{maxrep}{Maximum number of times to automatically extend the analysis if MCMC chains have not converged or the minimum effective sample size is not reached; default=5}
+
+\item{drop.chain}{A number indicating which MCMC chain to drop from the updated analysis. This may be useful if one chain happens to converge on opposite clusters than the others.}
 }
 \value{
 Returns an object of class \code{GCMM} with a list of analysis details and output; see \code{\link{GCMM}}. A mixture plot of the estimated activity curve is also printed.
@@ -20,7 +45,10 @@ Returns an object of class \code{GCMM} with a list of analysis details and outpu
 Extend GCMM analysis using \code{\link[runjags]{extend.jags}} from package \code{runjags}
 }
 \examples{
-\donttest{ updateFoxGCMM<-updateGCMM(FoxActivityGCMM) }
+\donttest{ FoxActivityGCMM<-GCMM(data=redfoxsample$Radians, 
+              RE1=redfoxsample$SamplingPeriod, family="vonmises", autorun=FALSE,
+              adapt=0, sample=300, burnin=300, thin=1, n.chains=2)
+           updateFoxGCMM<-updateGCMM(FoxActivityGCMM, sample=300, autorun=FALSE) }
 
 }
 \seealso{

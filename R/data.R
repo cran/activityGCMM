@@ -1,7 +1,7 @@
 #' Sample data of camera trap observations of humans
 #' 
 #'
-#' @description Example dataset for fitting circular mixed effect mixture models with AnimalAPD package
+#' @description Example dataset for fitting circular mixed effect mixture models with activityGCMM package
 #' 
 #' @name humanssample
 #' @docType data
@@ -29,7 +29,7 @@
 #' Sample data of camera trap observations of humans
 #' 
 #'
-#' @description Example dataset for fitting circular mixed effect mixture models with AnimalAPD package
+#' @description Example dataset for fitting circular mixed effect mixture models with activityGCMM package
 #' 
 #' @name redfoxsample
 #' @docType data

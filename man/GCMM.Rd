@@ -2,7 +2,7 @@
 % Please edit documentation in R/GCMM.R
 \name{GCMM}
 \alias{GCMM}
-\title{Generalized circular mixed effect mixture models (GCMM)}
+\title{Generalized circular mixed effect mixture (GCMM) model}
 \usage{
 GCMM(
   data,
@@ -11,8 +11,9 @@ GCMM(
   scale = "2pi",
   kmax = 15,
   family = c("vonmises", "wrappedcauchy"),
-  autojags = TRUE,
-  maxtime = "30m",
+  autorun = TRUE,
+  minESS = 5000,
+  maxrep = 5,
   thin = 2,
   burnin = 5000,
   sample = 5000,
@@ -24,10 +25,7 @@ GCMM(
   saveYExp = FALSE,
   saveJAGS = TRUE,
   Nclust = "NULL",
-  clustmeans = NULL,
-  plot.type = c("trace"),
-  printvars = monitor,
-  plotvars = c("CircularIntercept", "ClustProb", "sigma")
+  clustmeans = NULL
 )
 }
 \arguments{
@@ -43,9 +41,11 @@ GCMM(
 
 \item{family}{Probability distribution, either "vonmises" or "wrappedcauchy"}
 
-\item{autojags}{Whether to use autorun.jags from runjags to automatically run model until convergence of MCMC chains and minimum effective sample size achieved; default=TRUE}
+\item{autorun}{Logical argument for whether to autmatically extend the analyses to achieve MCMC chain convergence and a specified minimum effective sample size (ESS) for all parameters; default=TRUE}
 
-\item{maxtime}{Maximum time to let autorun.jags run for, can be input as minutes (e.g. "45m") or hours (e.g. "2h"); default="30m", increase for more complex models or larger datasets}
+\item{minESS}{Minimum effective sample size (ESS) from the posterior distribution desired for all paramerers; default=5000, though a minimum ESS of 10000 is recommended}
+
+\item{maxrep}{Maximum number of extensions of the analysis if \code{autorun=TRUE}; default=5}
 
 \item{thin}{Thinning rate for MCMC chains, i.e. how many samples are saved. For longer models, thin can be increased to reduce computer memory requirements}
 
@@ -70,17 +70,11 @@ GCMM(
 \item{Nclust}{Number of components for mixture models; if not provided, the function will estimate the number of clusters; if provided, values must be provided for clustmeans}
 
 \item{clustmeans}{A vector equal in length to Nclust of the potential means for each component in the mixture models}
-
-\item{plot.type}{Which MCMC diagnostic plots from runjags; options: "trace" for MCMC traceplots, "hist" for histograms of posterior distributions; default="trace"}
-
-\item{printvars}{Which of the saved variables to print in the output (the others will be saved in the summary); default does not include random intercepts, residuals, or expected Y}
-
-\item{plotvars}{Which of the saved variables to plot in the diagnostic plots; recommended to avoid including random intercepts, residuals, or expected Y as each produces a separate plot; default: intercepts, concentration paramters ("K" for vonmises and "rho" for wrapped cauchy), cluster weights}
 }
 \value{
 Returns object of class \code{GCMM} which is a list containing analysis results and details. A plot of the estimated activity curve from the mixed effect mixture model is printed.
 
-\code{output} GCMM model output summer
+\code{output} GCMM model output summary
 
 \code{GCMMmixture} Vectors of simulated values from mixture model
 
@@ -98,9 +92,9 @@ returns the model summary and the activity curve estimated from the circular mix
 information from the analysis provided in the output as a list of class \code{GCMM}.
 
 Package: activityGCMM
-Version: 1.0.0
-Date: 2020-11-08
-Author: Liz AD campbell
+Version: 1.0.1
+Date: 2021-06-06
+Author: Liz AD Campbell
 }
 \details{
 The number of clusters is automatically selected based on a Bayesian linear finite normal mixture model via
@@ -110,7 +104,7 @@ package.
 \examples{
 data(redfoxsample)
 \donttest{ FoxActivityGCMM<-GCMM(data=redfoxsample$Radians, RE1=redfoxsample$SamplingPeriod, 
-    scale=c("2pi"), family="vonmises", autojags=FALSE,
+    scale=c("2pi"), family="vonmises", autorun=FALSE,
     adapt=0, sample=300, burnin=300, thin=1,n.chains=2  ) }
  
 }

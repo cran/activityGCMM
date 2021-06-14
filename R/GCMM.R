@@ -1,4 +1,4 @@
-#' @title Generalized circular mixed effect mixture models (GCMM) 
+#' @title Generalized circular mixed effect mixture (GCMM) model 
 #' 
 #' @description Bayesian parametric generalized circular mixed effect mixture models (GCMM) for estimating animal activity curves 
 #'     from camera traps and other nested data structures using JAGS. Data distributions currently supported include 
@@ -9,9 +9,9 @@
 #'     information from the analysis provided in the output as a list of class \code{GCMM}.
 #' 
 #' Package: activityGCMM
-#' Version: 1.0.0
-#' Date: 2020-11-08 
-#' Author: Liz AD campbell
+#' Version: 1.0.1
+#' Date: 2021-06-06 
+#' Author: Liz AD Campbell
 #' 
 #' @details The number of clusters is automatically selected based on a Bayesian linear finite normal mixture model via
 #'     the \code{mclust} package. The Bayesian parametric GCMM is fit using 'JAGS' through R using the \code{runjags}
@@ -23,13 +23,14 @@
 #' @param scale Scale of observations, either 0 to 2pi ("2pi") or -pi to pi ("pi")
 #' @param family Probability distribution, either "vonmises" or "wrappedcauchy"
 #' @param kmax Maximum number to test for vonmises kappa parameter; default=15
-#' @param autojags Whether to use autorun.jags from runjags to automatically run model until convergence of MCMC chains and minimum effective sample size achieved; default=TRUE
-#' @param maxtime Maximum time to let autorun.jags run for, can be input as minutes (e.g. "45m") or hours (e.g. "2h"); default="30m", increase for more complex models or larger datasets
 #' @param thin Thinning rate for MCMC chains, i.e. how many samples are saved. For longer models, thin can be increased to reduce computer memory requirements
 #' @param sample If autojags=FALSE, the number of MCMC samples per chain (which is multiplied by thin); default=10000
 #' @param burnin If autojags=FALSE, the burnin for the MCMC chains which are not saved; default=5000
 #' @param adapt adaptation to use for MCMC chains; default=1000
 #' @param n.chains number of MCMC chains; default=3
+#' @param autorun Logical argument for whether to autmatically extend the analyses to achieve MCMC chain convergence and a specified minimum effective sample size (ESS) for all parameters; default=TRUE
+#' @param minESS Minimum effective sample size (ESS) from the posterior distribution desired for all paramerers; default=5000, though a minimum ESS of 10000 is recommended
+#' @param maxrep Maximum number of extensions of the analysis if \code{autorun=TRUE}; default=5
 #' @param Nclust Number of components for mixture models; if not provided, the function will estimate the number of clusters; if provided, values must be provided for clustmeans
 #' @param clustmeans A vector equal in length to Nclust of the potential means for each component in the mixture models
 #' @param saveREs Whether random intercepts are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations
@@ -37,12 +38,9 @@
 #' @param saveResids Whether model residuals are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations
 #' @param saveYExp Whether expected Y values based on model are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations
 #' @param saveJAGS Logical argument of whether to save runjags output; default=FALSE
-#' @param plot.type Which MCMC diagnostic plots from runjags; options: "trace" for MCMC traceplots, "hist" for histograms of posterior distributions; default="trace"
-#' @param printvars Which of the saved variables to print in the output (the others will be saved in the summary); default does not include random intercepts, residuals, or expected Y
-#' @param plotvars Which of the saved variables to plot in the diagnostic plots; recommended to avoid including random intercepts, residuals, or expected Y as each produces a separate plot; default: intercepts, concentration paramters ("K" for vonmises and "rho" for wrapped cauchy), cluster weights
 #' 
 #' @returns Returns object of class \code{GCMM} which is a list containing analysis results and details. A plot of the estimated activity curve from the mixed effect mixture model is printed.
-#' @returns \code{output} GCMM model output summer
+#' @returns \code{output} GCMM model output summary
 #' @returns \code{GCMMmixture} Vectors of simulated values from mixture model
 #' @returns \code{GCMMcomponents} Vectors of simulated values from each component in the mixture model
 #' @returns \code{runjags} GCMM model output from JAGS of class \code{runjags} from \code{runjags} package; see \code{\link[runjags]{run.jags}}
@@ -55,33 +53,36 @@
 #' @examples
 #' data(redfoxsample)
 #' \donttest{ FoxActivityGCMM<-GCMM(data=redfoxsample$Radians, RE1=redfoxsample$SamplingPeriod, 
-#'     scale=c("2pi"), family="vonmises", autojags=FALSE,
+#'     scale=c("2pi"), family="vonmises", autorun=FALSE,
 #'     adapt=0, sample=300, burnin=300, thin=1,n.chains=2  ) }
 #'  
 #' @export
 	GCMM<-function(data, RE1, RE2=NULL, scale="2pi", kmax=15, family=c("vonmises","wrappedcauchy"),
-		autojags=TRUE, maxtime="30m", thin=2, burnin=5000, sample=5000, adapt=1000, n.chains=3,
-		saveREs=FALSE, saveResids=FALSE, saveclustIDs=FALSE, saveYExp=FALSE, saveJAGS=TRUE, Nclust="NULL", clustmeans=NULL,
-		plot.type=c("trace"), printvars=monitor, plotvars=c("CircularIntercept","ClustProb","sigma")  )  {
+		autorun=TRUE, minESS=5000, maxrep=5, thin=2, burnin=5000, sample=5000, adapt=1000, n.chains=3,
+		saveREs=FALSE, saveResids=FALSE, saveclustIDs=FALSE, saveYExp=FALSE, saveJAGS=TRUE, Nclust="NULL", clustmeans=NULL )  {
 
 message(""); message("activityGCMM: Bayesian generalized circular mixed effect mixture models for estimating animal temporal activity curves")
-message("Bugs or comments can be reported to lizadcampbell@atlasgoldenwolf.org"); message("")
+message("Bugs or comments can be sent to lizadcampbell@atlasgoldenwolf.org or posted on www.atlasgoldenwolf.org/ladcampbellstatsforum"); message("")
 
-GCMMout<-NULL
 requireNamespace("mclust",quietly=TRUE)
+
+	testjags<-runjags::testjags(silent=TRUE)
+		if (testjags$JAGS.available==FALSE) { 
+					stop("JAGS software is not available on your computer. To download JAGS, visit https://mcmc-jags.sourceforge.io/ ") 
+					}
 
 if (Nclust=="NULL") { 
 	message("Identifying clusters....")
 
-	# Model-based k-clustering with mclust:
-	# fit data (assuming 0-2pi)
+	# Model-based k-clustering with mclust (0-2pi):
+		data<-convertRad(data,to="2pi")
 		mclustfit <- mclust::Mclust(data)
 			S2pi<-summary(mclustfit,parameters=TRUE)
 			clustmeans2pi<-S2pi$mean
 			Nclusts2pi<-length(clustmeans2pi)
 
 	# check for circular data; converting to [-pi,pi] to check number of clusters:
-		datpirad<-data; for (i in 1:length(data)) { if (data[i]>pi) { datpirad[i] <- data[i]-2*pi } }
+		datpirad<-convertRad(data,to="pi")
 		invisible(mclustfitpi <- mclust::Mclust(datpirad))
 			Spi<-summary(mclustfitpi,parameters=TRUE) 
 			clustmeanspi<-Spi$mean
@@ -142,7 +143,10 @@ if (Nclust=="NULL") {
 	}
 
 
-} else { clustmeans<-clustmeans; mclustout<-NULL }
+	} else { clustmeans<-clustmeans; mclustout<-NULL; mclustfit<-NULL; mclustfitpi<-NULL }
+
+	if(scale=="pi") { data<-convertRad(data,to="pi") }
+	if(scale=="2pi") { data<-convertRad(data,to="2pi") }
 
 
 	message(""); message("Running circular model...."); message("")
@@ -335,7 +339,6 @@ VM1RE2Cs = " model {
 	Resid[i]<-y[i]-YExp[i]
  	}
 }"
-
 
 
 VM2REs3Cs = " model {
@@ -651,12 +654,14 @@ WC1RE2Cs = " model {
 
 
 	### MCMC chain initialization: 
-	initsVM1RE <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.001), 
+	initsVM1RE <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.0001), 
 		ClustProb=stats::runif(Nclust,0,1), sigma1=stats::runif(Nclust,0,.5)	 ) }
-	initsVM2REs <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.001), 
+	initsVM2REs <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.0001), 
 		ClustProb=stats::runif(Nclust,0,1), sigma1=stats::runif(Nclust,0,.5), sigma2=stats::runif(Nclust,0,.5)	 ) }
-	initsWC1RE <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.001) ) } 
-	initsWC2REs <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.001) ) } 				
+	initsWC1RE <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.0001), rhoC=stats::runif(Nclust,0.1,0.9))}#,
+	##	alpha1=stats::rnorm(length(unique(RE1)),0,0.001) ) } 
+	initsWC2REs <- function () { list( CircularIntercept=stats::rnorm(Nclust,clustmeans,.0001), rhoC=stats::runif(Nclust,0.1,0.9))}#,
+	##	alpha1=stats::rnorm(length(unique(RE1)),0,0.001),alpha2=stats::rnorm(length(unique(RE2)),0,0.001) ) } 				
 
 
 	### Specifying model & inits: 
@@ -705,19 +710,54 @@ WC1RE2Cs = " model {
 		if (saveResids==TRUE) { monitor<-c(monitor,"Resid") }
 		if (saveYExp==TRUE) { monitor<-c(monitor,"YExp") }
 		if (saveclustIDs==TRUE) { monitor<-c(monitor,"clust") }
-
-
-	if(autojags==TRUE) {outGCMM<-runjags::autorun.jags(model=model, method="parallel", monitor=monitor, 
-					n.chains=3, thin=thin, adapt=adapt, data=JAGSdata, inits=inits, max.time=maxtime)
-		} else {	outGCMM<-runjags::run.jags(model=model, method="parallel", monitor=monitor, 
+	
+	outGCMM<-runjags::run.jags(model=model, method="parallel", monitor=monitor, 
 					n.chains=n.chains, thin=thin, adapt=adapt, data=JAGSdata, inits=inits, 
 					burnin=burnin, sample=sample) 
-		}
 
 	out<-summary(outGCMM)
 	output<-cbind(out[,4],out[,1],out[,3],out[,5],out[,11],out[,9])
 	colnames(output)<-c("Mean","Lower95","Upper95","SD","rhat","ESS")
 	output<-round(output,3)
+
+
+	if(autorun==TRUE) {
+		maxrhat<-max(output[,5],na.rm=TRUE)
+		i<-1
+		if(maxrhat>1.05) { repeat {
+				i<-i+1 
+				if(maxrhat<1.05) { break } #else {
+  	      		if ( i==maxrep ) { message("Maximum attempts reached. Analysis stopped before all rhat < 1.05; max rhat =",round(maxrhat,3)," Try increasing the number of samples."); break }   
+				message(""); message(""); message(paste("MCMC chains have not reached convergence (rhat<1.05); max rhat =",round(maxrhat,3)))
+				message("    Increasing MCMC iterations....");message(""); message("")
+				outGCMM<-runjags::extend.jags(outGCMM, burnin=burnin, sample=sample, combine=FALSE)
+					out<-summary(outGCMM)
+					output<-cbind(out[,4],out[,1],out[,3],out[,5],out[,11],out[,9])
+					colnames(output)<-c("Mean","Lower95","Upper95","SD","rhat","ESS")
+					output<-round(output,3)
+					maxrhat<-max(output[,5],na.rm=TRUE)
+			 }	 }
+			
+		ESSmin<-min(output[,6],na.rm=TRUE)
+		i2<-1
+			if(maxrhat<1.05) { if(ESSmin<minESS) { repeat {
+				i2<-i2+1
+				if(ESSmin>minESS) { break } 
+  	    			if (i2==maxrep) { message(paste("Maximum attempts reached. Analysis stopped before minimum ESS achieved. minESS =",round(ESSmin,0))) 
+					 message("   Try increasing the number of samples."); break }   
+				message(""); message(""); message(paste("Minimum ESS not yet achieved; minESS =",round(ESSmin,0) ))
+				message("    Increasing MCMC iterations...."); message(""); message("")
+				outGCMM<-runjags::extend.jags(outGCMM, burnin=0, sample=sample)
+					out<-summary(outGCMM)
+					output<-cbind(out[,4],out[,1],out[,3],out[,5],out[,11],out[,9])
+					colnames(output)<-c("Mean","Lower95","Upper95","SD","rhat","ESS")
+					output<-round(output,3)
+						ESSmin<-min(output[,6],na.rm=TRUE)
+				 } } }
+		}
+
+
+
 
 	mu<-summary(outGCMM,vars="CircularIntercept"); mu<-round(mu[,4],2)
 	if(Nclust>1) { p<-summary(outGCMM,vars="ClustProb"); p<-round(p[,4],2)  } else { p<-1 }
@@ -736,28 +776,30 @@ WC1RE2Cs = " model {
 	gcmmmixture<-c()
 		for (i in 1:Nclust) { 
 			if (family=="vonmises") { 
-				gcmmcomponents[[i]]<-circular::rvonmises(as.numeric(p[i])*10000, circular::circular(mu[i]), k[i])  
+				gcmmcomponents[[i]]<-circular::rvonmises(as.numeric(p[i])*10000, circular::circular(convertRad(mu[i],to="2pi")), k[i])  
 				gcmmmixture<-c(gcmmmixture,gcmmcomponents[[i]])
 				 }
 			if (family=="wrappedcauchy") { 
-				gcmmcomponents[[i]]<-circular::rwrappedcauchy(p[i]*10000, circular::circular(mu[i]), rho[i] )  
+				gcmmcomponents[[i]]<-circular::rwrappedcauchy(p[i]*10000, circular::circular(convertRad(mu[i],to="2pi")), rho[i] )  
 				gcmmmixture<-c(gcmmmixture,gcmmcomponents[[i]])
 				}
 		}
 
 
 	### Mixture Plot: 
-	overlap::densityPlot(as.numeric(gcmmmixture),xscale=NA,yaxs="i",extend=NA,lwd=3,adjust=5,xlim=c(0,2*pi),main="")
-		graphics::abline(v=c(pi,pi/2,3*pi/2),lty=2,col="gray60"); graphics::box(lwd=2)
+	if (scale=="pi") { lim1<-(-1*pi); lim2<-pi; xcenter<-c("midnight") }
+	if (scale=="2pi") { lim1<-0; lim2<-2*pi; xcenter<-c("noon") }
+		overlap::densityPlot(as.numeric(gcmmmixture),xcenter=xcenter,xscale=NA,yaxs="i",xaxs="i",extend=NA,lwd=3,adjust=5,xlim=c(lim1,lim2),main="")
+			graphics::abline(v=c(-pi,0,pi,pi/2,3*pi/2,-pi/2),lty=2,col="gray60"); graphics::box(lwd=2)
+ 
 
 	if(family=="vonmises"){ c<-k }
 	if(family=="wrappedcauchy"){ c<-rho }
-
-	GCMMout<<-new.env()
-	GCMMout$JAGSdata<<-JAGSdata			
-	GCMMoutput<-list(family=family,data=data,RE1=RE1,RE2=RE2,Nclust=Nclust,scale=scale,Mu=mu,P=p,c=c,model=outGCMM,
+		
+	GCMMoutput<-list(family=family,data=data,RE1=RE1,RE2=RE2,Nclust=Nclust,clustmeans=clustmeans,scale=scale,Mu=mu,P=p,c=c,model=outGCMM,
 		GCMMmixture=gcmmmixture,GCMMcomponents=gcmmcomponents,output=output,#summary(outGCMM),
 		saveclustIDs=saveclustIDs,saveResids=saveResids,saveYExp=saveYExp,saveREs=saveREs,saveJAGS=saveJAGS,
+			mclustfit=mclustfit,mclustfitpi=mclustfitpi, 
 		clustIDs=clustIDs,E=E,YExp=YExp,alpha1=alpha1,alpha2=alpha2,runjags=runjags)
 		class(GCMMoutput) <- "GCMM"
 
@@ -779,7 +821,7 @@ message("GCMM analysis complete");message("");message("")
 }
 
 
-
+#######################################################################
 
 #' @title Executable example of GCMM function
 #' @description Example of applying generalized circular mixed effect mixture model with activityGCMM 
@@ -789,67 +831,11 @@ message("GCMM analysis complete");message("");message("")
 #' @export
 	exampleGCMM<- function() { message("Try example with sample data included in the package: data(redfoxsample)")
 			message("Run a generalized circular mixed effect mixture vonmises model using:")
-			message("    GCMM(data=redfoxsample$Radians, RE1=redfoxsample$CameraTrapID, family=\"vonmises\",") 
-     			message("           autojags=FALSE, adapt=0, burnin=500, sample=500)")	}
+			message("    FoxGCMM<-GCMM(data=redfoxsample$Radians, RE1=redfoxsample$CameraTrapID, family=\"vonmises\",") 
+     			message("           autorun=TRUE, burnin=2000, sample=5000, thin=2, minESS=2000)")	}
 
 
-
-#' @title GCMM components plot
-#' @description Plot of activity curves for the separate components in the circular mixture model
-#' 
-#' @param model Model output from GCMM function, object of class \code{GCMM}
-#' @param rug Logical argument for whether to plot a rug of the raw values. Plotting the rug for the separate components requires that saveclustIDs=TRUE when running GCMM. default=FALSE
-#' @param ruglwd Line width for rug plot
-#' @param lwd Line width for activity curve lines
-#' @param col Character vector for colours for the activity curve lines and rug plot; must be of equal length to the number of components
-#' 
-#' @return Plot of the separate components of the circular mixture model
-#' 
-#' @examples
-#' \donttest{ componentsplot(FoxActivityGCMM) }
-#'  
-#' @export
-	componentsplot<-function(model,rug=FALSE,ruglwd=2,lwd=3,col=c("black","grey40","grey60","grey80")) {
-
-	# Set max for ylim: 
-		max<-c()
-		for(i in 1:length(model$GCMMcomponents)) {
-			xx <- seq(0, 2 * pi, length = 128)				
-			bw<-overlap::getBandWidth(model$GCMMcomponents[[i]], kmax=3)/5   
-			   dens<-overlap::densityFit(model$GCMMcomponents[[i]], xx, bw)
-			 	max<-c(max,max(dens))#  toPlot<-cbind(x=xx, y=dens)
-			}
-		ymax<-max(max)
-
-	# Plot: 
-		for(i in 1:length(model$GCMMcomponents)) {
-			overlap::densityPlot(as.numeric(model$GCMMcomponents[[i]]),
-				col=col[i],xscale=NA,xaxs="i",extend=NA,lwd=lwd,adjust=5,xlim=c(0,2*pi),
-				ylim=c(0,ymax),main="",xlab="Time")
-				graphics::abline(h=0,col="white")
-				graphics::abline(v=c(pi,pi/2,3*pi/2),lty=2,col="gray60")
-				graphics::box(lwd=2); graphics::par(new=TRUE)
-		}
-
-	# Rug: 
-	if(rug==TRUE) {
-			df<-data.frame(Data=model$data,Clust=as.numeric(model$clust))
-			df<-df[order(df$Clust),]
-			data<-model$data
-			cdata<-list()
-			s<-1
-			for(i in 1:length(model$GCMMcomponents)) { 
-				N<-as.numeric(table(df$Clust)[i] )
-				N2<-s+N-1 
-				c<-data[s:N2] 
-				s<-s+N
-					rug(c,col=col[i],lwd=ruglwd); graphics::box(lwd=2)
-				}
-			}
-	}
-
-
-
+#####################################################
 
 #' @title Extend GCMM analysis
 #' @description Extend GCMM analysis using \code{\link[runjags]{extend.jags}} from package \code{runjags}
@@ -858,30 +844,90 @@ message("GCMM analysis complete");message("");message("")
 #' @param model Object of class \code{GCMM} that is produced by the \code{\link{GCMM}} function
 #' @param sample Number of iterations per MCMC chain
 #' @param burnin Number of iterations per MCMC chain to be discarded as a burn-in
+#' @param autorun Whether to automatically extend the analysis until MCMC chain convergence and minimum effective sample size (ESS) is achieved; default is TRUE
+#' @param minESS Desired minimum effective sample size (MCMC) when automatically extending the analysis using \code{autorun=TRUE}; default is 5000
+#' @param maxrep Maximum number of times to automatically extend the analysis if MCMC chains have not converged or the minimum effective sample size is not reached; default=5
+#' @param saveREs Whether random intercepts are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations; default=FALSE
+#' @param saveclustIDs Whether to save component cluster identification for the data points; default=FALSE
+#' @param saveResids Whether model residuals are saved in output; recommended to save only one of saveREs, saveResids or saveYExp at one time due to memory limitations
+#' @param drop.chain A number indicating which MCMC chain to drop from the updated analysis. This may be useful if one chain happens to converge on opposite clusters than the others. 
 #' 
 #' @return Returns an object of class \code{GCMM} with a list of analysis details and output; see \code{\link{GCMM}}. A mixture plot of the estimated activity curve is also printed.
 #' 
 #' @examples
-#' \donttest{ updateFoxGCMM<-updateGCMM(FoxActivityGCMM) }
+#' \donttest{ FoxActivityGCMM<-GCMM(data=redfoxsample$Radians, 
+#'               RE1=redfoxsample$SamplingPeriod, family="vonmises", autorun=FALSE,
+#'               adapt=0, sample=300, burnin=300, thin=1, n.chains=2)
+#'            updateFoxGCMM<-updateGCMM(FoxActivityGCMM, sample=300, autorun=FALSE) }
 #' 
 #' @export
-	updateGCMM<-function(model, burnin=0, sample=10000) {
+	updateGCMM<-function(model, burnin=0, sample=10000, saveclustIDs=FALSE, saveREs=FALSE, saveResids=FALSE, 
+		autorun=TRUE, minESS=5000, maxrep=5, drop.chain=0) {
 
-	outGCMM<-runjags::extend.jags(model$runjags,burnin=burnin,sample=sample)
+	add<-FALSE; addmonitor<-c()
+	if (model$saveclustIDs==FALSE) { if(saveclustIDs==TRUE) { add<-TRUE; addmonitor<-c(addmonitor,"clust") } }
+	if (model$saveREs==FALSE) { if(saveREs==TRUE) { add<-TRUE; addmonitor<-c(addmonitor,"alpha1")
+		if (length(model$RE2>0)) { add.monitor<-c(addmonitor, "alpha2") } } }
+	if (model$saveResids==FALSE) { if(saveResids==TRUE) { add<-TRUE; addmonitor<-c(addmonitor,"Resid") } }
+	if(add==TRUE) { 	
+		outGCMM<-runjags::extend.jags(model$runjags,burnin=burnin,sample=sample,add.monitor=addmonitor) } else {
+	if(drop.chain!=0) { 
+		outGCMM<-runjags::extend.jags(model$runjags,burnin=burnin,sample=sample,drop.chain=drop.chain) } else {
+		outGCMM<-runjags::extend.jags(model$runjags,burnin=burnin,sample=sample, combine=TRUE)
+	  }	}
 
-	if(model$saveclustIDs==TRUE) { clustIDs<-summary(outGCMM,vars="clust"); clustIDs<-clustIDs[,6] } else { clustIDs<-NULL } 
+	if(saveclustIDs==TRUE) { clustIDs<-summary(outGCMM,vars="clust"); clustIDs<-clustIDs[,6] } else { clustIDs<-NULL } 
 	if(model$saveResids==TRUE) { E<-summary(outGCMM,vars="Resid"); E<-E[,4] } else { E<-NULL } 
 	if(model$saveYExp==TRUE) { YExp<-summary(outGCMM,vars="YExp") } else { YExp<-NULL } 
-	if (model$saveREs==TRUE) { 
+	if (saveREs==TRUE) { 
 		alpha1<-summary(outGCMM,vars="alpha1")
-		if (length(model$RE2)>0) { alpha2<-summary(outGCMM,vars="alpha2") } else { alpha2<-NULL }
-	    } else { alpha1<-NULL; alpha2<-NULL } 
+			if (length(model$RE2)>0) { alpha2<-summary(outGCMM,vars="alpha2") } else { alpha2<-NULL }
+			} else { 
+				if (model$saveREs==TRUE) {
+					alpha1<-summary(outGCMM,vars="alpha1")
+						if (length(model$RE2)>0) { alpha2<-summary(outGCMM,vars="alpha2") } else { alpha2<-NULL }
+	   						 } else { 
+								alpha1<-NULL; alpha2<-NULL } }
 	if (model$saveJAGS==TRUE) { runjags<-outGCMM } else { runjags<-NULL }
 
 	out<-summary(outGCMM)
 	output<-cbind(out[,4],out[,1],out[,3],out[,5],out[,11],out[,9])
 	colnames(output)<-c("Mean","Lower95","Upper95","SD","rhat","ESS")
 	output<-round(output,3)
+
+	if(autorun==TRUE) {
+		maxrhat<-max(output[,5],na.rm=TRUE)
+		i<-1
+		if(maxrhat>1.05) { repeat {
+				i<-i+1 
+				if(maxrhat<1.05) { break } 
+  	      		if ( i==maxrep ) { message("Maximum attempts reached. Analysis stopped before all rhat < 1.05; max rhat =",round(maxrhat,3)," Try increasing the number of samples."); break }   
+				message(""); message(""); message(paste("MCMC chains have not reached convergence (rhat<1.05); max rhat =",round(maxrhat,3)))
+				message("    Increasing MCMC iterations....");message(""); message("")
+				outGCMM<-runjags::extend.jags(outGCMM, burnin=burnin, sample=sample, combine=FALSE)
+					out<-summary(outGCMM)
+					output<-cbind(out[,4],out[,1],out[,3],out[,5],out[,11],out[,9])
+					colnames(output)<-c("Mean","Lower95","Upper95","SD","rhat","ESS")
+					output<-round(output,3)
+					maxrhat<-max(output[,5],na.rm=TRUE)
+				 }	 }	
+		ESSmin<-min(output[,6],na.rm=TRUE)
+		i2<-1
+			if(maxrhat<1.05) { if(ESSmin<minESS) { repeat {
+				i2<-i2+1
+				if(ESSmin>minESS) { break } 
+  	    			if (i2==maxrep) { message(paste("Maximum attempts reached. Analysis stopped before minimum ESS achieved. minESS =",round(ESSmin,0))) 
+					 message("   Try increasing the number of samples."); break }   
+				message(""); message(""); message(paste("Minimum ESS not yet achieved; minESS =",round(ESSmin,0) ))
+				message("    Increasing MCMC iterations...."); message(""); message("")
+				outGCMM<-runjags::extend.jags(outGCMM, burnin=0, sample=sample, combine=TRUE)
+					out<-summary(outGCMM)
+					output<-cbind(out[,4],out[,1],out[,3],out[,5],out[,11],out[,9])
+					colnames(output)<-c("Mean","Lower95","Upper95","SD","rhat","ESS")
+					output<-round(output,3)
+						ESSmin<-min(output[,6],na.rm=TRUE)
+				 } } }
+		}
 
 	message("")
 	print(output)
@@ -897,11 +943,11 @@ message("GCMM analysis complete");message("");message("")
 	gcmmmixture<-c()
 		for (i in 1:model$Nclust) { 
 			if (model$family=="vonmises") { 
-				gcmmcomponents[[i]]<-circular::rvonmises(as.numeric(p[i])*10000, circular::circular(mu[i]), kappa=c[i])  
+				gcmmcomponents[[i]]<-circular::rvonmises(as.numeric(p[i])*10000, circular::circular(convertRad(mu[i],to="2pi")), kappa=c[i])  
 				gcmmmixture<-c(gcmmmixture,gcmmcomponents[[i]])
 				 }
 			if (model$family=="wrappedcauchy") { 
-				gcmmcomponents[[i]]<-circular::rwrappedcauchy(p[i]*10000, circular::circular(mu[i]), c[i] )  
+				gcmmcomponents[[i]]<-circular::rwrappedcauchy(p[i]*10000, circular::circular(convertRad(mu[i],to="2pi")), c[i] )  
 				gcmmmixture<-c(gcmmmixture,gcmmcomponents[[i]])
 				}
 		}
@@ -910,7 +956,7 @@ message("GCMM analysis complete");message("");message("")
 		graphics::abline(v=c(pi,pi/2,3*pi/2),lty=2,col="gray60"); graphics::box(lwd=2)
 
 	GCMMoutput<-list(family=model$family,data=model$data,RE1=model$RE1,RE2=model$RE2,
-		Nclust=model$Nclust,scale=model$scale,Mu=mu,P=p,c=c,#model=outGCMM,
+		Nclust=model$Nclust,scale=model$scale,Mu=mu,P=p,c=c,
 		GCMMmixture=gcmmmixture,GCMMcomponents=gcmmcomponents,output=output,#summary(outGCMM),
 		saveclustIDs=model$saveclustIDs,saveResids=model$saveResids,saveYExp=model$saveYExp,saveREs=model$saveREs,saveJAGS=model$saveJAGS,
 		clustIDs=clustIDs,E=E,YExp=YExp,alpha1=alpha1,alpha2=alpha2,runjags=runjags)
@@ -924,8 +970,8 @@ message("GCMM analysis complete");message("");message("")
 	message(paste("Minimum effective sample size:",round(minESS,0)))
 	if(minESS<10000) { message("    NOTE: A minimum ESS of 10000 is recommended, consider increasing the number of samples") }
 
-	message("");message("----------------------")
-	message("GCMM updated analysis complete");message("");message("")
+	message(""); message("----------------------")
+	message("GCMM updated analysis complete"); message(""); message("")
 
 		return(GCMMoutput)
 	}
